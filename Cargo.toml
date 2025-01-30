@@ -1,0 +1,23 @@
+[package]
+name = "pixootop"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+amdgpu-sysfs = "0.17.5"
+ansi-to-tui = "7.0.0"
+ansipix = "2.0.0"
+anyhow = "1.0.95"
+bluetooth-serial-port = "0.6.0"
+chrono = "0.4.39"
+crossbeam = "0.8.4"
+crossterm = "0.28.1"
+image = "0.25.5"
+libpulse-binding = "2.28.2"
+log = "0.4.25"
+phf = { version = "0.11.3", features = ["macros"] }
+pixoo = "0.1.0"
+pulsectl-rs = "0.3.2"
+ratatui = "0.29.0"
+sysinfo = "0.33.1"
+tui-logger = { version = "0.14.1", features = ["crossterm"] }
