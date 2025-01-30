@@ -1,6 +1,6 @@
 # PixooTop
 
-[![asciicast](https://asciinema.org/a/fA2rBE2BXGsAa9UgGYTUfJbxw.svg)](https://asciinema.org/a/fA2rBE2BXGsAa9UgGYTUfJbxw)
+[![asciicast](https://asciinema.org/a/uigvDN2fmva4YGchKfhwvwmJY.svg)](https://asciinema.org/a/uigvDN2fmva4YGchKfhwvwmJY)
 
 Simple system monitor on the
 [Divoom Pixoo](https://divoom.com/products/divoom-pixoo/).
