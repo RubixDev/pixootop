@@ -11,7 +11,10 @@ use crossterm::event::{self, Event, KeyCode};
 use image::DynamicImage;
 use libpulse_binding::volume::Volume;
 use log::{debug, error, info, trace};
-use pixoo::{Brightness, Pixoo, DISPLAY_SIZE};
+use pixoo::{
+    mode::{LightEffectMode, LightMode},
+    Brightness, Pixoo, DISPLAY_SIZE,
+};
 use pulsectl::controllers::{DeviceControl, SinkController};
 use ratatui::{
     layout::{Constraint, Layout},
@@ -164,7 +167,7 @@ fn try_main(terminal: &mut DefaultTerminal) -> Result<()> {
                 );
             })
             .context("drawing terminal")?;
-        tx.force_push(img);
+        tx.force_push(Message::Frame(img));
 
         if jh.is_finished() {
             match jh.join() {
@@ -181,7 +184,11 @@ fn try_main(terminal: &mut DefaultTerminal) -> Result<()> {
         if event::poll(Duration::from_millis(100)).context("event poll failed")? {
             if let Event::Key(key) = event::read().context("event read failed")? {
                 match key.code {
-                    KeyCode::Char('q') => return Ok(()),
+                    KeyCode::Char('q') => {
+                        tx.force_push(Message::Quit);
+                        thread::sleep(Duration::from_secs(1));
+                        return Ok(());
+                    }
                     KeyCode::Char(' ') => log_state.transition(TuiWidgetEvent::SpaceKey),
                     KeyCode::Esc => log_state.transition(TuiWidgetEvent::EscapeKey),
                     KeyCode::PageUp => log_state.transition(TuiWidgetEvent::PrevPageKey),
@@ -201,7 +208,12 @@ fn try_main(terminal: &mut DefaultTerminal) -> Result<()> {
     }
 }
 
-fn pixoo_worker(rx: Arc<ArrayQueue<DynamicImage>>) -> Result<()> {
+enum Message {
+    Frame(DynamicImage),
+    Quit,
+}
+
+fn pixoo_worker(rx: Arc<ArrayQueue<Message>>) -> Result<()> {
     let mut pixoo =
         Pixoo::connect(BtAddr::from_str(PIXOO_MAC_ADDR).unwrap()).context("connecting to pixoo")?;
     debug!("connected to Pixoo");
@@ -209,9 +221,23 @@ fn pixoo_worker(rx: Arc<ArrayQueue<DynamicImage>>) -> Result<()> {
 
     loop {
         thread::sleep(Duration::from_millis(100));
-        if let Some(img) = rx.pop() {
-            trace!("sending new image to device");
-            pixoo.set_image(&img).context("sending frame")?;
+        match rx.pop() {
+            Some(Message::Frame(img)) => {
+                trace!("sending new image to device");
+                pixoo.set_image(&img).context("sending frame")?;
+            }
+            Some(Message::Quit) => {
+                info!("turning display off");
+                pixoo
+                    .set_mode(LightMode::Light {
+                        color: [255, 0, 255],
+                        brightness: Brightness::new(30).unwrap(),
+                        effect_mode: LightEffectMode::Normal,
+                        on: false,
+                    })
+                    .context("turning display off")?
+            }
+            None => {}
         }
     }
 }
