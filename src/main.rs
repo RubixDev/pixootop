@@ -6,8 +6,14 @@ use anyhow::{Context as _, Result};
 use average::Averaged;
 use bluetooth_serial_port::BtAddr;
 use chrono::Local;
-use crossbeam::queue::ArrayQueue;
-use crossterm::event::{self, Event, KeyCode};
+use crossbeam::{
+    channel::{self, Receiver},
+    queue::ArrayQueue,
+};
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
+    execute,
+};
 use image::DynamicImage;
 use libpulse_binding::volume::Volume;
 use log::{debug, error, info, trace};
@@ -39,21 +45,23 @@ fn main() {
     debug!("logger initialized");
 
     let mut terminal = ratatui::init();
+    execute!(std::io::stdout(), EnableMouseCapture).expect("failed enabling mouse events");
     while let Err(err) = try_main(&mut terminal) {
         error!("encountered error: {err:?}");
         thread::sleep(Duration::from_secs(1));
     }
     info!("graceful shutdown...");
+    execute!(std::io::stdout(), DisableMouseCapture).expect("failed disabling mouse events");
     ratatui::restore();
 }
 
 const PIXOO_MAC_ADDR: &str = "11:75:58:35:2B:35";
 const GPU_DEVICE_PATH: &str = "/sys/class/drm/card1/device";
 const NETWORK_INTERFACE: &str = "enp37s0";
+const MAX_NETWORK: f64 = 200_000.;
 
 const PROGRESS_STEPS: u8 = 3;
 const PROGRESS_RANGE: f64 = 15. * PROGRESS_STEPS as f64;
-const MAX_NETWORK: f64 = 200_000.;
 
 fn try_main(terminal: &mut DefaultTerminal) -> Result<()> {
     let mut log_state = TuiWidgetState::new()
@@ -70,7 +78,9 @@ fn try_main(terminal: &mut DefaultTerminal) -> Result<()> {
 
     let tx = Arc::new(ArrayQueue::new(1));
     let rx = Arc::clone(&tx);
-    let mut jh = thread::spawn(|| pixoo_worker(rx));
+    let (s, r) = channel::unbounded();
+    let r2 = r.clone();
+    let mut jh = thread::spawn(|| pixoo_worker(rx, r2));
 
     let mut sys = System::new();
     let mut networks = Networks::new();
@@ -176,17 +186,20 @@ fn try_main(terminal: &mut DefaultTerminal) -> Result<()> {
                         error!("pixoo worker encountered error: {err:?}");
                     }
                     let rx = Arc::clone(&tx);
-                    jh = thread::spawn(|| pixoo_worker(rx));
+                    let r = r.clone();
+                    jh = thread::spawn(|| pixoo_worker(rx, r));
                 }
                 Err(e) => panic::resume_unwind(e),
             }
         }
         if event::poll(Duration::from_millis(100)).context("event poll failed")? {
-            if let Event::Key(key) = event::read().context("event read failed")? {
-                match key.code {
+            match event::read().context("event read failed")? {
+                Event::Key(key) => match key.code {
                     KeyCode::Char('q') => {
                         tx.force_push(Message::Quit);
-                        thread::sleep(Duration::from_secs(1));
+                        if let Err(e) = jh.join() {
+                            panic::resume_unwind(e);
+                        }
                         return Ok(());
                     }
                     KeyCode::Char(' ') => log_state.transition(TuiWidgetEvent::SpaceKey),
@@ -202,7 +215,15 @@ fn try_main(terminal: &mut DefaultTerminal) -> Result<()> {
                     KeyCode::Char('h') => log_state.transition(TuiWidgetEvent::HideKey),
                     KeyCode::Char('f') => log_state.transition(TuiWidgetEvent::FocusKey),
                     _ => {}
+                },
+                Event::Mouse(mouse) => {
+                    match mouse.kind {
+                        MouseEventKind::ScrollDown => _ = s.send(QueuedMessage::BrightnessDown),
+                        MouseEventKind::ScrollUp => _ = s.send(QueuedMessage::BrightnessUp),
+                        _ => {}
+                    };
                 }
+                _ => {}
             }
         }
     }
@@ -213,11 +234,19 @@ enum Message {
     Quit,
 }
 
-fn pixoo_worker(rx: Arc<ArrayQueue<Message>>) -> Result<()> {
+enum QueuedMessage {
+    BrightnessUp,
+    BrightnessDown,
+}
+
+fn pixoo_worker(rx: Arc<ArrayQueue<Message>>, r: Receiver<QueuedMessage>) -> Result<()> {
     let mut pixoo =
         Pixoo::connect(BtAddr::from_str(PIXOO_MAC_ADDR).unwrap()).context("connecting to pixoo")?;
     debug!("connected to Pixoo");
-    pixoo.set_brightness(Brightness::new(30).unwrap()).unwrap();
+    let mut brightness = Brightness::new(30).unwrap();
+    pixoo
+        .set_brightness(brightness)
+        .context("setting brightness")?;
 
     loop {
         thread::sleep(Duration::from_millis(100));
@@ -231,13 +260,27 @@ fn pixoo_worker(rx: Arc<ArrayQueue<Message>>) -> Result<()> {
                 pixoo
                     .set_mode(LightMode::Light {
                         color: [255, 0, 255],
-                        brightness: Brightness::new(30).unwrap(),
+                        brightness,
                         effect_mode: LightEffectMode::Normal,
                         on: false,
                     })
-                    .context("turning display off")?
+                    .context("turning display off")?;
+                return Ok(());
             }
             None => {}
+        }
+        match r.try_recv() {
+            Ok(msg @ (QueuedMessage::BrightnessUp | QueuedMessage::BrightnessDown)) => {
+                match msg {
+                    QueuedMessage::BrightnessUp => brightness = brightness.saturating_add(5),
+                    _ => brightness = brightness.saturating_sub(5),
+                }
+                debug!("setting brightness to {brightness}");
+                pixoo
+                    .set_brightness(brightness)
+                    .context("setting brightness")?;
+            }
+            Err(_) => {}
         }
     }
 }
