@@ -64,7 +64,7 @@ const PROGRESS_STEPS: u8 = 3;
 const PROGRESS_RANGE: f64 = 15. * PROGRESS_STEPS as f64;
 
 fn try_main(terminal: &mut DefaultTerminal) -> Result<()> {
-    let mut log_state = TuiWidgetState::new()
+    let log_state = TuiWidgetState::new()
         .set_default_display_level(LevelFilter::Info)
         .set_level_for_target("pixootop", LevelFilter::Debug);
     log_state.transition(TuiWidgetEvent::HideKey);
