@@ -1,7 +1,5 @@
 # PixooTop
 
-[![asciicast](https://asciinema.org/a/uigvDN2fmva4YGchKfhwvwmJY.svg)](https://asciinema.org/a/uigvDN2fmva4YGchKfhwvwmJY)
-
 Simple system monitor on the
 [Divoom Pixoo](https://divoom.com/products/divoom-pixoo/).
 
@@ -13,4 +11,10 @@ well as the current time up to the second.
 
 Currently, this program is very specific to my exact PC setup. It only works on
 Linux, only with AMD GPUs, and several device names etc. are hard-coded as
-constants at the top. Make sure to pair your Pixoo before running this.
+constants at the top.
+
+The project consists of a server and a client binary. The server is meant to run
+on some always-on device that has bluetooth access to the Pixoo, such as a
+Raspberry Pi. The client binary can then run on your PC which will continously
+send the system usage information to the server. This split allows the clock to
+keep being displayed while your PC is off.

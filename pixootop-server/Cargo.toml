@@ -1,0 +1,17 @@
+[package]
+name = "pixootop-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+actix-web = "4.11.0"
+anyhow.workspace = true
+bluetooth-serial-port = "0.6.0"
+chrono.workspace = true
+env_logger.workspace = true
+image = "0.25.6"
+log.workspace = true
+phf = { version = "0.11.3", features = ["macros"] }
+pixoo = "0.1.0"
+serde.workspace = true
+tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread"] }
