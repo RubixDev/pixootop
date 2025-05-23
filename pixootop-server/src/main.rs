@@ -1,7 +1,7 @@
 use std::{str::FromStr as _, time::Duration};
 
 use actix_web::{
-    App, HttpResponse, HttpServer, Responder, post,
+    App, HttpResponse, HttpServer, Responder, get, post,
     web::{Data, Json},
 };
 use anyhow::{Context as _, Result};
@@ -141,6 +141,11 @@ async fn reset_state(data: AppData) -> impl Responder {
     HttpResponse::Ok()
 }
 
+#[get("/")]
+async fn index() -> impl Responder {
+    HttpResponse::Ok().body(include_str!("./index.html"))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
@@ -166,6 +171,7 @@ async fn main() -> Result<()> {
             .service(brightness_down)
             .service(set_state)
             .service(reset_state)
+            .service(index)
     })
     .bind(("0.0.0.0", 6969))?
     .run()
