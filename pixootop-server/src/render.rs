@@ -16,7 +16,7 @@ pub struct Context {
     pub time: DateTime<Local>,
 }
 
-pub fn create_frame(ctx: Option<Context>, mut time: DateTime<Local>) -> RgbImage {
+pub fn create_frame(ctx: Option<Context>, mut time: DateTime<Local>, stale: bool) -> RgbImage {
     let mut img = RgbImage::new(DISPLAY_SIZE, DISPLAY_SIZE);
 
     if let Some(ctx) = ctx {
@@ -30,6 +30,7 @@ pub fn create_frame(ctx: Option<Context>, mut time: DateTime<Local>) -> RgbImage
                 Rgb([0xbb, 0x88, 0x00]),
                 Rgb([0x88, 0x55, 0x00]),
             ],
+            stale,
         );
         draw_progress(
             ctx.mem,
@@ -40,6 +41,7 @@ pub fn create_frame(ctx: Option<Context>, mut time: DateTime<Local>) -> RgbImage
                 Rgb([0x00, 0x99, 0x00]),
                 Rgb([0x00, 0x55, 0x00]),
             ],
+            stale,
         );
         draw_progress(
             ctx.cpu,
@@ -50,6 +52,7 @@ pub fn create_frame(ctx: Option<Context>, mut time: DateTime<Local>) -> RgbImage
                 Rgb([0x00, 0x00, 0x99]),
                 Rgb([0x00, 0x00, 0x55]),
             ],
+            stale,
         );
         draw_progress(
             ctx.gpu,
@@ -60,6 +63,7 @@ pub fn create_frame(ctx: Option<Context>, mut time: DateTime<Local>) -> RgbImage
                 Rgb([0xbb, 0x55, 0x00]),
                 Rgb([0x88, 0x33, 0x00]),
             ],
+            stale,
         );
         draw_progress(
             ctx.gpu_mem,
@@ -70,6 +74,7 @@ pub fn create_frame(ctx: Option<Context>, mut time: DateTime<Local>) -> RgbImage
                 Rgb([0x99, 0x00, 0x00]),
                 Rgb([0x55, 0x00, 0x00]),
             ],
+            stale,
         );
         draw_progress(
             ctx.net_up,
@@ -80,6 +85,7 @@ pub fn create_frame(ctx: Option<Context>, mut time: DateTime<Local>) -> RgbImage
                 Rgb([0x00, 0x77, 0xbb]),
                 Rgb([0x00, 0x55, 0x88]),
             ],
+            stale,
         );
         draw_progress(
             ctx.net_down,
@@ -90,6 +96,7 @@ pub fn create_frame(ctx: Option<Context>, mut time: DateTime<Local>) -> RgbImage
                 Rgb([0x66, 0x00, 0x99]),
                 Rgb([0x44, 0x00, 0x66]),
             ],
+            stale,
         );
     }
 
@@ -113,19 +120,25 @@ pub fn create_frame(ctx: Option<Context>, mut time: DateTime<Local>) -> RgbImage
     img
 }
 
-fn draw_progress<I: GenericImage>(progress: u8, img: &mut I, y: u32, colors: [I::Pixel; 3]) {
+fn draw_progress<I: GenericImage>(
+    progress: u8,
+    img: &mut I,
+    y: u32,
+    colors: [I::Pixel; 3],
+    stale: bool,
+) {
     let full = (progress / PROGRESS_STEPS).min(15);
     let rest = match full >= 15 {
         true => 0,
         false => progress % PROGRESS_STEPS,
     };
     for x in 0..=full {
-        img.put_pixel(x as u32, y, colors[0]);
+        img.put_pixel(x as u32, y, if stale { colors[2] } else { colors[0] });
     }
-    match rest {
-        1 => img.put_pixel(full as u32 + 1, y, colors[2]),
-        2 => img.put_pixel(full as u32 + 1, y, colors[1]),
-        _ => {}
+    match (rest, stale) {
+        (1, _) | (_, true) => img.put_pixel(full as u32 + 1, y, colors[2]),
+        (2, false) => img.put_pixel(full as u32 + 1, y, colors[1]),
+        (_, false) => {}
     }
 }
 

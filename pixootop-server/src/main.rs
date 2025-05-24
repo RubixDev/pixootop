@@ -16,7 +16,7 @@ use pixoo::{
 use render::Context;
 use tokio::{
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
-    time,
+    time::{self, Instant},
 };
 
 mod fonts;
@@ -92,13 +92,26 @@ async fn pixoo_loop(rx: &mut UnboundedReceiver<Message>) -> Result<()> {
 
 async fn render_loop(mut rx: UnboundedReceiver<Option<Context>>, tx: UnboundedSender<Message>) {
     let mut state = None;
+    let mut last_state_update = Instant::now();
     loop {
         time::sleep(Duration::from_millis(100)).await;
         while let Ok(ctx) = rx.try_recv() {
             state = ctx;
+            last_state_update = Instant::now();
         }
 
-        let img = DynamicImage::from(render::create_frame(state, Local::now()));
+        if last_state_update.elapsed() >= Duration::from_secs(60) {
+            if state.is_some() {
+                info!("client disconnected");
+            }
+            state = None;
+        }
+
+        let img = DynamicImage::from(render::create_frame(
+            state,
+            Local::now(),
+            last_state_update.elapsed() >= Duration::from_secs(2),
+        ));
         _ = tx.send(Message::Frame(img));
     }
 }
