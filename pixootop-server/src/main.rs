@@ -1,8 +1,12 @@
-use std::{str::FromStr as _, time::Duration};
+use std::{
+    str::FromStr as _,
+    sync::atomic::{AtomicU8, Ordering},
+    time::Duration,
+};
 
 use actix_web::{
     App, HttpResponse, HttpServer, Responder, get, post,
-    web::{Data, Json},
+    web::{Data, Json, Path},
 };
 use anyhow::{Context as _, Result};
 use bluetooth_serial_port::BtAddr;
@@ -25,6 +29,8 @@ mod render;
 const PIXOO_MAC_ADDR: &str = "11:75:58:35:2B:35";
 const PROGRESS_STEPS: u8 = 3;
 
+static BRIGHTNESS: AtomicU8 = AtomicU8::new(30);
+
 #[derive(PartialEq)]
 enum Message {
     Frame(DynamicImage),
@@ -32,17 +38,17 @@ enum Message {
     Off,
     BrightnessUp,
     BrightnessDown,
+    Brightness(Brightness),
 }
 
-async fn pixoo_loop(
-    rx: &mut UnboundedReceiver<Message>,
-    brightness: &mut Brightness,
-) -> Result<()> {
+async fn pixoo_loop(rx: &mut UnboundedReceiver<Message>) -> Result<()> {
     let mut pixoo =
         Pixoo::connect(BtAddr::from_str(PIXOO_MAC_ADDR).unwrap()).context("connecting to pixoo")?;
     debug!("connected to Pixoo");
     pixoo
-        .set_brightness(*brightness)
+        .set_brightness(Brightness::new_saturating(
+            BRIGHTNESS.load(Ordering::SeqCst),
+        ))
         .context("setting brightness")?;
     let mut on = true;
 
@@ -67,24 +73,47 @@ async fn pixoo_loop(
                     pixoo
                         .set_mode(LightMode::Light {
                             color: [255, 0, 255],
-                            brightness: *brightness,
+                            brightness: Brightness::new_saturating(
+                                BRIGHTNESS.load(Ordering::SeqCst),
+                            ),
                             effect_mode: LightEffectMode::Normal,
                             on: false,
                         })
                         .context("turning display off")?;
                 }
                 Message::BrightnessUp => {
-                    *brightness = brightness.saturating_add(5);
+                    let brightness = Brightness::new_saturating(
+                        BRIGHTNESS
+                            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |b| {
+                                Some(b.saturating_add(5))
+                            })
+                            .unwrap()
+                            .saturating_add(5),
+                    );
                     debug!("setting brightness to {brightness}");
                     pixoo
-                        .set_brightness(*brightness)
+                        .set_brightness(brightness)
                         .context("setting brightness")?;
                 }
                 Message::BrightnessDown => {
-                    *brightness = brightness.saturating_sub(5);
+                    let brightness = Brightness::new_saturating(
+                        BRIGHTNESS
+                            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |b| {
+                                Some(b.saturating_sub(5))
+                            })
+                            .unwrap()
+                            .saturating_sub(5),
+                    );
                     debug!("setting brightness to {brightness}");
                     pixoo
-                        .set_brightness(*brightness)
+                        .set_brightness(brightness)
+                        .context("setting brightness")?;
+                }
+                Message::Brightness(brightness) => {
+                    BRIGHTNESS.store(brightness.into(), Ordering::SeqCst);
+                    debug!("setting brightness to {brightness}");
+                    pixoo
+                        .set_brightness(brightness)
                         .context("setting brightness")?;
                 }
             }
@@ -144,6 +173,17 @@ async fn brightness_down(data: AppData) -> impl Responder {
     HttpResponse::Ok()
 }
 
+#[post("/brightness/{brightness}")]
+async fn set_brightness(data: AppData, path: Path<Brightness>) -> impl Responder {
+    _ = data.0.send(Message::Brightness(path.into_inner()));
+    HttpResponse::Ok()
+}
+
+#[get("/brightness")]
+async fn get_brightness() -> impl Responder {
+    HttpResponse::Ok().body(BRIGHTNESS.load(Ordering::SeqCst).to_string())
+}
+
 #[post("/state")]
 async fn set_state(data: AppData, Json(body): Json<Context>) -> impl Responder {
     _ = data.1.send(Some(body));
@@ -167,8 +207,7 @@ async fn main() -> Result<()> {
 
     let (pixoo_tx, mut pixoo_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
-        let mut brightness = Brightness::new(30).unwrap();
-        while let Err(err) = pixoo_loop(&mut pixoo_rx, &mut brightness).await {
+        while let Err(err) = pixoo_loop(&mut pixoo_rx).await {
             error!("pixoo service encountered error: {err:?}");
         }
     });
@@ -185,6 +224,8 @@ async fn main() -> Result<()> {
             .service(turn_on)
             .service(brightness_up)
             .service(brightness_down)
+            .service(set_brightness)
+            .service(get_brightness)
             .service(set_state)
             .service(reset_state)
             .service(index)

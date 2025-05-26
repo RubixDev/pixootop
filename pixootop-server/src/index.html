@@ -1,11 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+        <title>PixooTop</title>
 
-<body>
-  <button onclick="fetch('/brightness-up', { method: 'POST' })">Brightness +</button>
-  <button onclick="fetch('/brightness-down', { method: 'POST' })">Brightness -</button>
-  <button onclick="fetch('/on', { method: 'POST' })">Screen On</button>
-  <button onclick="fetch('/off', { method: 'POST' })">Screen Off</button>
-</body>
+        <style>
+            :root {
+                color-scheme: dark light;
+            }
 
+            button {
+                min-height: 3rem;
+                background-color: blueviolet;
+                border: none;
+                border-radius: 0.5rem;
+                font-size: 1em;
+            }
+
+            body {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+                margin: 2rem auto;
+                padding-inline: 2rem;
+                max-width: 20rem;
+            }
+        </style>
+
+        <script>
+            window.addEventListener('load', async () => {
+                const slider = document.getElementById('brightness')
+                const brightness = await (await fetch('/brightness')).text()
+                slider.value = brightness
+                slider.disabled = false
+
+                slider.addEventListener('input', event => {
+                    fetch('/brightness/' + event.target.value, { method: 'POST' })
+                })
+            })
+        </script>
+    </head>
+
+    <body>
+        <button onclick="fetch('/on', { method: 'POST' })">Screen On</button>
+        <button onclick="fetch('/off', { method: 'POST' })">Screen Off</button>
+        <button onclick="fetch('/reset-state', { method: 'POST' })">Force Disconnect</button>
+
+        <input id="brightness" type="range" disabled min="0" max="100" step="1" />
+    </body>
 </html>

@@ -445,6 +445,9 @@ name = "bounded-integer"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "102dbef1187b1893e6dfe05a774e79fd52265f49f214f6879c8ff49f52c8188b"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "brotli"
@@ -2021,6 +2024,7 @@ dependencies = [
  "actix-web",
  "anyhow",
  "bluetooth-serial-port",
+ "bounded-integer",
  "chrono",
  "env_logger",
  "image",
