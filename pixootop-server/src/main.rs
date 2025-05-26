@@ -34,13 +34,15 @@ enum Message {
     BrightnessDown,
 }
 
-async fn pixoo_loop(rx: &mut UnboundedReceiver<Message>) -> Result<()> {
+async fn pixoo_loop(
+    rx: &mut UnboundedReceiver<Message>,
+    brightness: &mut Brightness,
+) -> Result<()> {
     let mut pixoo =
         Pixoo::connect(BtAddr::from_str(PIXOO_MAC_ADDR).unwrap()).context("connecting to pixoo")?;
     debug!("connected to Pixoo");
-    let mut brightness = Brightness::new(30).unwrap();
     pixoo
-        .set_brightness(brightness)
+        .set_brightness(*brightness)
         .context("setting brightness")?;
     let mut on = true;
 
@@ -65,24 +67,24 @@ async fn pixoo_loop(rx: &mut UnboundedReceiver<Message>) -> Result<()> {
                     pixoo
                         .set_mode(LightMode::Light {
                             color: [255, 0, 255],
-                            brightness,
+                            brightness: *brightness,
                             effect_mode: LightEffectMode::Normal,
                             on: false,
                         })
                         .context("turning display off")?;
                 }
                 Message::BrightnessUp => {
-                    brightness = brightness.saturating_add(5);
+                    *brightness = brightness.saturating_add(5);
                     debug!("setting brightness to {brightness}");
                     pixoo
-                        .set_brightness(brightness)
+                        .set_brightness(*brightness)
                         .context("setting brightness")?;
                 }
                 Message::BrightnessDown => {
-                    brightness = brightness.saturating_sub(5);
+                    *brightness = brightness.saturating_sub(5);
                     debug!("setting brightness to {brightness}");
                     pixoo
-                        .set_brightness(brightness)
+                        .set_brightness(*brightness)
                         .context("setting brightness")?;
                 }
             }
@@ -165,7 +167,8 @@ async fn main() -> Result<()> {
 
     let (pixoo_tx, mut pixoo_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
-        while let Err(err) = pixoo_loop(&mut pixoo_rx).await {
+        let mut brightness = Brightness::new(30).unwrap();
+        while let Err(err) = pixoo_loop(&mut pixoo_rx, &mut brightness).await {
             error!("pixoo service encountered error: {err:?}");
         }
     });
