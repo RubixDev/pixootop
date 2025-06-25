@@ -16,3 +16,4 @@ phf = { version = "0.11.3", features = ["macros"] }
 pixoo = "0.1.0"
 serde.workspace = true
 tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread"] }
+tokio-util = "0.7.15"

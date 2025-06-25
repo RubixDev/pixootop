@@ -19,9 +19,11 @@ use pixoo::{
 };
 use render::Context;
 use tokio::{
+    select,
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     time::{self, Instant},
 };
+use tokio_util::sync::CancellationToken;
 
 mod fonts;
 mod render;
@@ -205,16 +207,28 @@ async fn index() -> impl Responder {
 async fn main() -> Result<()> {
     env_logger::init();
 
+    let cancel = CancellationToken::new();
+
     let (pixoo_tx, mut pixoo_rx) = mpsc::unbounded_channel();
-    tokio::spawn(async move {
+    let cancel_clone = cancel.clone();
+    let pixoo_job = tokio::spawn(async move {
         while let Err(err) = pixoo_loop(&mut pixoo_rx).await {
             error!("pixoo service encountered error: {err:?}");
+            if cancel_clone.is_cancelled() {
+                return;
+            }
         }
     });
 
     let (state_tx, state_rx) = mpsc::unbounded_channel();
     let pixoo_tx_2 = pixoo_tx.clone();
-    tokio::spawn(render_loop(state_rx, pixoo_tx_2));
+    let cancel_clone = cancel.clone();
+    let render_job = tokio::spawn(async move {
+        select! {
+            _ = render_loop(state_rx, pixoo_tx_2) => {}
+            _ = cancel_clone.cancelled() => {}
+        }
+    });
 
     let data = Data::new((pixoo_tx, state_tx));
     HttpServer::new(move || {
@@ -233,5 +247,11 @@ async fn main() -> Result<()> {
     .bind(("0.0.0.0", 6969))?
     .run()
     .await?;
+
+    _ = tokio::signal::ctrl_c().await;
+    cancel.cancel();
+    pixoo_job.await.unwrap();
+    render_job.await.unwrap();
+
     Ok(())
 }
